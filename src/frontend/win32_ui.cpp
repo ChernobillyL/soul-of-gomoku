@@ -61,7 +61,7 @@ struct Rect {
 enum class Screen { Menu, Playing, Finished };
 enum class MenuPage { GameSelection, ModeSelection };
 enum class GameType { Gomoku, ThreePlayer, SixPlayer };
-enum class ButtonAction { None, PvP, PvC, SelectGomoku, SelectThreePlayer, SelectSixPlayer, BackToGames, Undo, Restart, MainMenu, Exit };
+enum class ButtonAction { None, PvP, PvC, SelectGomoku, SelectThreePlayer, SelectSixPlayer, Undo, Restart, MainMenu, Exit };
 
 struct UndoSnapshot {
     Game game;
@@ -81,8 +81,8 @@ struct Layout {
     Rect boardGrid{};
     Rect sidePanel{};
     Rect notationList{};
-    std::array<Rect, 4> buttons{};
-    std::array<Rect, 6> menuButtons{};
+    std::array<Rect, 3> buttons{};
+    std::array<Rect, 3> menuButtons{};
     Rect menuExit{};
     Rect menuPanel{};
     UINT dpi = 96;
@@ -190,11 +190,11 @@ void drawCenteredText(HDC dc, const std::wstring& text, Rect rect, int size, COL
 }
 
 void drawButton(HDC dc, Rect rect, const std::wstring& label, ButtonAction action,
-                ButtonAction hovered, UINT dpi, bool primary = false, bool danger = false,
+                ButtonAction hovered, UINT dpi, bool danger = false,
                 bool enabled = true, bool highlighted = false) {
     const bool isHovered = enabled && (action == hovered || highlighted);
-    COLORREF fill = primary ? kAccentDark : kPanelLight;
-    COLORREF outline = primary ? kAccent : RGB(61, 77, 101);
+    COLORREF fill = kPanelLight;
+    COLORREF outline = RGB(61, 77, 101);
     COLORREF textColor = kText;
     if (!enabled) {
         fill = kPanel;
@@ -203,39 +203,41 @@ void drawButton(HDC dc, Rect rect, const std::wstring& label, ButtonAction actio
     } else if (danger) {
         fill = isHovered ? RGB(151, 61, 67) : RGB(116, 50, 59);
         outline = RGB(196, 87, 91);
-    } else if (primary && isHovered) {
-        fill = RGB(42, 174, 143);
     } else if (isHovered) {
         fill = RGB(52, 70, 97);
-        outline = kAccent;
+        outline = RGB(116, 134, 158);
     }
     drawRoundRect(dc, rect, fill, outline, 14, dpi);
     drawCenteredText(dc, label, rect, 19, textColor, dpi, FW_SEMIBOLD);
 }
 
-// 参数：客户区宽高、当前 DPI、棋盘路数。
+// 参数：客户区宽高、当前 DPI、棋盘路数、当前菜单页。
 // 返回：按逻辑像素计算、再经 DPI 缩放的各区域矩形。
 // 实现：棋盘和右侧面板按可用空间取最小值，保证 19 路棋盘也不越界；菜单页
-// 以“标题 + 三行按钮 + 退出”的整体高度垂直居中。
-Layout calculateLayout(int width, int height, UINT dpi, int boardSize = gomoku::kBoardSize) {
+// 垂直居中。只有棋种选择页有“退出游戏”按钮，模式选择页另有“返回主菜单”。
+Layout calculateLayout(int width, int height, UINT dpi, int boardSize = gomoku::kBoardSize,
+                       MenuPage menuPage = MenuPage::GameSelection) {
     Layout layout;
     layout.dpi = dpi;
     layout.boardSize = boardSize;
+    const bool gamePage = menuPage == MenuPage::GameSelection;
+    const int menuButtonCount = 3;
+    const int menuRowCount = menuButtonCount + (gamePage ? 1 : 0);
     const int buttonWidth = std::min(px(330, dpi), std::max(px(240, dpi), width / 3));
     const int buttonHeight = px(50, dpi);
     const int menuLeft = width / 2 - buttonWidth / 2;
     const int menuPitch = px(58, dpi);
-    const int menuRowsHeight = menuPitch * 3 + buttonHeight;
+    const int menuRowsHeight = menuPitch * (menuRowCount - 1) + buttonHeight;
     const int menuTop = (height - menuRowsHeight) / 2;
-    for (int i = 0; i < 3; ++i) {
+    for (int i = 0; i < menuButtonCount; ++i) {
         layout.menuButtons[static_cast<std::size_t>(i)] =
             makeRect(menuLeft, menuTop + i * menuPitch, buttonWidth, buttonHeight);
     }
-    layout.menuButtons[3] = makeRect(menuLeft, menuTop + menuPitch, buttonWidth, buttonHeight);
-    layout.menuButtons[4] = makeRect(menuLeft, menuTop + 2 * menuPitch, buttonWidth, buttonHeight);
-    layout.menuExit = makeRect(menuLeft, menuTop + 3 * menuPitch, buttonWidth, buttonHeight);
+    if (gamePage) {
+        layout.menuExit = makeRect(menuLeft, menuTop + menuButtonCount * menuPitch, buttonWidth, buttonHeight);
+    }
     const int menuPanelTop = menuTop - px(44, dpi);
-    const int menuPanelBottom = layout.menuExit.bottom + px(44, dpi);
+    const int menuPanelBottom = (gamePage ? layout.menuExit.bottom : layout.menuButtons[2].bottom) + px(44, dpi);
     layout.menuPanel = makeRect(width / 2 - px(260, dpi), menuPanelTop, px(520, dpi),
                                 menuPanelBottom - menuPanelTop);
 
@@ -259,10 +261,10 @@ Layout calculateLayout(int width, int height, UINT dpi, int boardSize = gomoku::
     layout.sidePanel = makeRect(panelX, headerHeight, panelWidth, boardPixels);
     const int sideButtonHeight = std::max(px(40, dpi), std::min(px(48, dpi), layout.sidePanel.height() / 11));
     const int gap = px(7, dpi);
-    const int buttonY = layout.sidePanel.bottom - sideButtonHeight * 4 - gap * 3 - px(18, dpi);
-    layout.notationList = {panelX + px(20, dpi), layout.sidePanel.top + px(150, dpi),
+    const int buttonY = layout.sidePanel.bottom - sideButtonHeight * 3 - gap * 2 - px(18, dpi);
+    layout.notationList = {panelX + px(20, dpi), layout.sidePanel.top + px(116, dpi),
                            panelX + panelWidth - px(20, dpi), buttonY - px(14, dpi)};
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 3; ++i) {
         layout.buttons[static_cast<std::size_t>(i)] = makeRect(
             panelX + px(18, dpi), buttonY + i * (sideButtonHeight + gap), panelWidth - px(36, dpi), sideButtonHeight);
     }
@@ -284,25 +286,15 @@ void drawMenu(HDC dc, int width, int height, const AppState& app, const Layout& 
 
     drawRoundRect(dc, layout.menuPanel, kPanel, RGB(50, 66, 91), 22, dpi);
     if (app.menuPage == MenuPage::GameSelection) {
-        drawCenteredText(dc, L"第一步 · 选择棋种",
-                         makeRect(0, layout.menuPanel.top + px(8, dpi), width, px(30, dpi)),
-                         17, kMuted, dpi, FW_SEMIBOLD);
-        drawButton(dc, layout.menuButtons[0], L"五子棋", ButtonAction::SelectGomoku, app.hovered, dpi, true);
+        drawButton(dc, layout.menuButtons[0], L"五子棋", ButtonAction::SelectGomoku, app.hovered, dpi);
         drawButton(dc, layout.menuButtons[1], L"三人四子棋", ButtonAction::SelectThreePlayer, app.hovered, dpi);
         drawButton(dc, layout.menuButtons[2], L"六子棋", ButtonAction::SelectSixPlayer, app.hovered, dpi);
+        drawButton(dc, layout.menuExit, L"退出游戏", ButtonAction::Exit, app.hovered, dpi, true);
     } else {
-        const wchar_t* gameName = app.selectedGame == GameType::Gomoku ? L"五子棋" :
-                                  app.selectedGame == GameType::ThreePlayer ? L"三人四子棋" : L"六子棋";
-        drawCenteredText(dc, std::wstring(L"第二步 · 选择 ") + gameName + L" 模式",
-                         makeRect(0, layout.menuPanel.top + px(8, dpi), width, px(30, dpi)),
-                         16, kMuted, dpi, FW_SEMIBOLD);
-        drawButton(dc, layout.menuButtons[0], L"玩家对战  ·  PvP", ButtonAction::PvP, app.hovered, dpi, true);
+        drawButton(dc, layout.menuButtons[0], L"玩家对战  ·  PvP", ButtonAction::PvP, app.hovered, dpi);
         drawButton(dc, layout.menuButtons[1], L"人机对战  ·  PvC", ButtonAction::PvC, app.hovered, dpi);
-        drawButton(dc, layout.menuButtons[2], L"返回选择棋种", ButtonAction::BackToGames, app.hovered, dpi);
+        drawButton(dc, layout.menuButtons[2], L"返回主菜单", ButtonAction::MainMenu, app.hovered, dpi, true);
     }
-    drawButton(dc, layout.menuExit, L"退出游戏", ButtonAction::Exit, app.hovered, dpi, false, true);
-    drawCenteredText(dc, L"五子棋 / 三人四子棋：15 路    六子棋：19 路",
-                     makeRect(0, height - px(52, dpi), width, px(26, dpi)), 14, kMuted, dpi);
 }
 
 const wchar_t* stoneLabel(Stone stone) {
@@ -375,24 +367,10 @@ std::wstring playerText(const AppState& app) {
     return app.game.currentPlayer() == Stone::Black ? L"轮到黑棋" : L"轮到白棋";
 }
 
-void drawHeader(HDC dc, int width, const AppState& app) {
+void drawHeader(HDC dc, const AppState& app) {
     const UINT dpi = app.dpi;
     const wchar_t* gameTitle = app.sixPlayer ? L"六子棋" : (app.threePlayer ? L"三人四子棋" : L"五子棋");
     drawText(dc, gameTitle, scaledRect(28, 22, 180, 48, dpi), 27, kText, dpi, DT_LEFT, FW_BOLD);
-    std::wstring modeTitle = app.pvc ? L"五子棋  /  PvC" : L"五子棋  /  PvP";
-    if (app.threePlayer && !app.sixPlayer) modeTitle = app.threePlayerAi ? L"三人四子棋  /  PvC" : L"三人四子棋  /  PvP";
-    if (app.sixPlayer) modeTitle = app.pvc ? L"六子棋  /  PvC" : L"六子棋  /  PvP";
-    drawText(dc, modeTitle, scaledRect(210, 24, 250, 44, dpi), 16, kMuted, dpi);
-    if (app.threePlayer && !app.threePlayerAi) {
-        drawText(dc, L"附加规则：他人已有死三/活三时，本手不可再成活三",
-                 scaledRect(210, 70, 620, 24, dpi), 11, kMuted, dpi);
-    } else if (app.sixPlayer) {
-        drawText(dc, app.sixGame.board().moveCount() == 0 ? L"黑方开局先下一子；之后双方每回合各下两子，连六获胜。"
-                                                        : L"每回合连续落两子；落下第一子后仍由同一方落第二子。",
-                 scaledRect(210, 70, 700, 24, dpi), 11, kMuted, dpi);
-    }
-    drawText(dc, L"ESC  返回菜单", makeRect(width - px(210, dpi), px(24, dpi), px(182, dpi), px(42, dpi)),
-             14, kMuted, dpi, DT_RIGHT);
 }
 
 void drawStone(HDC dc, int x, int y, int radius, Stone stone, bool isLast, UINT dpi) {
@@ -506,17 +484,11 @@ void drawSidePanel(HDC dc, const AppState& app, const Layout& layout) {
     drawText(dc, playerText(app), makeRect(left + px(22, dpi), top + px(54, dpi), width - px(44, dpi), px(48, dpi)),
              23, app.screen == Screen::Finished ? kAccent : kText, dpi, DT_LEFT, FW_BOLD);
 
-    drawText(dc, app.status, makeRect(left + px(22, dpi), top + px(108, dpi), width - px(44, dpi), px(28, dpi)),
-             12, kAccent, dpi);
-
     drawRoundRect(dc, layout.notationList, kPanelLight, RGB(61, 77, 101), 14, dpi);
     drawText(dc, L"落子记录", makeRect(layout.notationList.left + px(14, dpi),
                                        layout.notationList.top + px(8, dpi),
-                                       layout.notationList.width() - px(48, dpi), px(26, dpi)),
+                                       layout.notationList.width() - px(28, dpi), px(26, dpi)),
              14, kMuted, dpi, DT_LEFT, FW_SEMIBOLD);
-    drawText(dc, L"滚轮浏览", makeRect(layout.notationList.right - px(84, dpi),
-                                      layout.notationList.top + px(8, dpi), px(72, dpi), px(26, dpi)),
-             10, kMuted, dpi, DT_RIGHT);
 
     const int lineHeight = std::max(1, px(24, dpi));
     const int listTop = layout.notationList.top + px(38, dpi);
@@ -553,17 +525,16 @@ void drawSidePanel(HDC dc, const AppState& app, const Layout& layout) {
                                              ? kAccent : kText, dpi);
         }
     }
-    drawButton(dc, layout.buttons[0], L"悔棋", ButtonAction::Undo, app.hovered, dpi, false, false,
+    drawButton(dc, layout.buttons[0], L"悔棋", ButtonAction::Undo, app.hovered, dpi, false,
                !app.undoHistory.empty(), app.undoHistory.empty() && app.hovered == ButtonAction::Undo);
     drawButton(dc, layout.buttons[1], app.screen == Screen::Finished ? L"再来一局" : L"重新开始",
-               ButtonAction::Restart, app.hovered, dpi, true);
-    drawButton(dc, layout.buttons[2], L"返回主菜单", ButtonAction::MainMenu, app.hovered, dpi);
-    drawButton(dc, layout.buttons[3], L"退出游戏", ButtonAction::Exit, app.hovered, dpi, false, true);
+               ButtonAction::Restart, app.hovered, dpi);
+    drawButton(dc, layout.buttons[2], L"返回主菜单", ButtonAction::MainMenu, app.hovered, dpi, true);
 }
 
 void drawGame(HDC dc, int width, int height, const AppState& app, const Layout& layout) {
     drawBackground(dc, width, height, layout.dpi);
-    drawHeader(dc, width, app);
+    drawHeader(dc, app);
     drawBoard(dc, app, layout);
     drawSidePanel(dc, app, layout);
 }
@@ -588,7 +559,7 @@ void paintWindow(HWND window, AppState& app) {
         return;
     }
 
-    const Layout layout = calculateLayout(width, height, app.dpi, app.boardSize());
+    const Layout layout = calculateLayout(width, height, app.dpi, app.boardSize(), app.menuPage);
     HDC memoryDc = CreateCompatibleDC(targetDc);
     HBITMAP bitmap = memoryDc != nullptr ? CreateCompatibleBitmap(targetDc, width, height) : nullptr;
     if (memoryDc == nullptr || bitmap == nullptr) {
@@ -715,8 +686,7 @@ Rect buttonRect(ButtonAction action, const AppState& app, const Layout& layout) 
         switch (action) {
             case ButtonAction::PvP: return layout.menuButtons[0];
             case ButtonAction::PvC: return layout.menuButtons[1];
-            case ButtonAction::BackToGames: return layout.menuButtons[2];
-            case ButtonAction::Exit: return layout.menuExit;
+            case ButtonAction::MainMenu: return layout.menuButtons[2];
             default: return {};
         }
     }
@@ -724,7 +694,6 @@ Rect buttonRect(ButtonAction action, const AppState& app, const Layout& layout) 
         case ButtonAction::Undo: return layout.buttons[0];
         case ButtonAction::Restart: return layout.buttons[1];
         case ButtonAction::MainMenu: return layout.buttons[2];
-        case ButtonAction::Exit: return layout.buttons[3];
         default: return {};
     }
 }
@@ -764,7 +733,8 @@ ButtonAction hitTest(const POINT point, const AppState& app, const Layout& layou
         } else {
             if (layout.menuButtons[0].contains(point)) return ButtonAction::PvP;
             if (layout.menuButtons[1].contains(point)) return ButtonAction::PvC;
-            if (layout.menuButtons[2].contains(point)) return ButtonAction::BackToGames;
+            if (layout.menuButtons[2].contains(point)) return ButtonAction::MainMenu;
+            return ButtonAction::None;
         }
         if (layout.menuExit.contains(point)) return ButtonAction::Exit;
         return ButtonAction::None;
@@ -775,8 +745,7 @@ ButtonAction hitTest(const POINT point, const AppState& app, const Layout& layou
             switch (i) {
                 case 0: return ButtonAction::Undo;
                 case 1: return ButtonAction::Restart;
-                case 2: return ButtonAction::MainMenu;
-                default: return ButtonAction::Exit;
+                default: return ButtonAction::MainMenu;
             }
         }
     }
@@ -800,7 +769,7 @@ void scrollNotationToLatest(HWND window, AppState& app) {
     RECT client{};
     GetClientRect(window, &client);
     const Layout layout = calculateLayout(client.right - client.left, client.bottom - client.top,
-                                          app.dpi, app.boardSize());
+                                          app.dpi, app.boardSize(), app.menuPage);
     const int visibleLines = notationVisibleLines(layout);
     app.notationScroll = std::max(0, static_cast<int>(app.moveHistory().size()) - visibleLines);
 }
@@ -967,10 +936,6 @@ void performAction(HWND window, AppState& app, ButtonAction action, const Layout
             app.menuPage = MenuPage::ModeSelection;
             app.status = L"已选择六子棋，请选择 PvP 或 PvC。";
             break;
-        case ButtonAction::BackToGames:
-            app.menuPage = MenuPage::GameSelection;
-            app.status = L"请先选择游戏种类。";
-            break;
         case ButtonAction::PvP:
             if (app.selectedGame == GameType::Gomoku) startGame(app, false);
             else if (app.selectedGame == GameType::ThreePlayer) startThreePlayerGame(app, false);
@@ -1008,7 +973,7 @@ void performAction(HWND window, AppState& app, ButtonAction action, const Layout
             app.sixGame = gomoku::SixPlayerGame{};
             app.lastMove.reset();
             app.undoHistory.clear();
-            app.status = L"选择一种模式，开始一局五子棋。";
+            app.status = L"请先选择游戏种类。";
             break;
         case ButtonAction::Exit:
             DestroyWindow(window);
@@ -1057,7 +1022,7 @@ LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
         case WM_MOUSEMOVE: {
             RECT client{};
             GetClientRect(window, &client);
-            const Layout layout = calculateLayout(client.right - client.left, client.bottom - client.top, app->dpi, app->boardSize());
+            const Layout layout = calculateLayout(client.right - client.left, client.bottom - client.top, app->dpi, app->boardSize(), app->menuPage);
             const POINT point{static_cast<short>(LOWORD(lParam)), static_cast<short>(HIWORD(lParam))};
             const ButtonAction hovered = hitTest(point, *app, layout);
             if (hovered != app->hovered) {
@@ -1078,7 +1043,7 @@ LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             app->hovered = ButtonAction::None;
             RECT client{};
             GetClientRect(window, &client);
-            const Layout layout = calculateLayout(client.right - client.left, client.bottom - client.top, app->dpi, app->boardSize());
+            const Layout layout = calculateLayout(client.right - client.left, client.bottom - client.top, app->dpi, app->boardSize(), app->menuPage);
             invalidateButton(window, previous, *app, layout);
             return 0;
         }
@@ -1087,7 +1052,7 @@ LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
             ScreenToClient(window, &screenPoint);
             RECT client{};
             GetClientRect(window, &client);
-            const Layout layout = calculateLayout(client.right - client.left, client.bottom - client.top, app->dpi, app->boardSize());
+            const Layout layout = calculateLayout(client.right - client.left, client.bottom - client.top, app->dpi, app->boardSize(), app->menuPage);
             if (app->screen != Screen::Menu && layout.notationList.contains(screenPoint)) {
                 const int visibleLines = notationVisibleLines(layout);
                 const int maxScroll = std::max(0, static_cast<int>(app->moveHistory().size()) - visibleLines);
@@ -1104,7 +1069,7 @@ LRESULT CALLBACK windowProcedure(HWND window, UINT message, WPARAM wParam, LPARA
         case WM_LBUTTONUP: {
             RECT client{};
             GetClientRect(window, &client);
-            const Layout layout = calculateLayout(client.right - client.left, client.bottom - client.top, app->dpi, app->boardSize());
+            const Layout layout = calculateLayout(client.right - client.left, client.bottom - client.top, app->dpi, app->boardSize(), app->menuPage);
             const POINT point{static_cast<short>(LOWORD(lParam)), static_cast<short>(HIWORD(lParam))};
             const ButtonAction action = hitTest(point, *app, layout);
             if (action != ButtonAction::None) {
