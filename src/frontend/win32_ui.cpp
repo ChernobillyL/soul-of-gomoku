@@ -110,7 +110,7 @@ struct AppState {
     std::optional<Move> lastMove;
     std::vector<UndoSnapshot> undoHistory;
     int notationScroll = 0;
-    std::wstring status = L"选择一种模式，开始一局五子棋。";
+    std::wstring status = L"选择棋种和模式，开始对局。";
     ButtonAction hovered = ButtonAction::None;
 
     const Board& board() const {
@@ -279,10 +279,11 @@ void drawBackground(HDC dc, int width, int height, UINT dpi) {
 void drawMenu(HDC dc, int width, int height, const AppState& app, const Layout& layout) {
     const UINT dpi = layout.dpi;
     drawBackground(dc, width, height, dpi);
-    drawCenteredText(dc, L"GOMOKU", makeRect(0, height / 2 - px(350, dpi), width, px(58, dpi)),
+    drawCenteredText(dc, L"棋魂", makeRect(0, height / 2 - px(350, dpi), width, px(58, dpi)),
                      42, kText, dpi, FW_BOLD);
-    drawCenteredText(dc, L"五子棋", makeRect(0, height / 2 - px(290, dpi), width, px(42, dpi)),
-                     25, kAccent, dpi, FW_SEMIBOLD);
+    drawCenteredText(dc, L"GOMOKU · 五子棋 · 三人四子棋 · 六子棋",
+                     makeRect(0, height / 2 - px(290, dpi), width, px(42, dpi)),
+                     18, kAccent, dpi, FW_SEMIBOLD);
 
     drawRoundRect(dc, layout.menuPanel, kPanel, RGB(50, 66, 91), 22, dpi);
     if (app.menuPage == MenuPage::GameSelection) {
