@@ -7,7 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(MSVC)
     add_compile_options(/utf-8)
-    # 静态链接 MSVC 运行库，使 五子棋.exe 不依赖 VC++ Redistributable。
+    # 静态链接 MSVC 运行库，使 棋魂.exe 不依赖 VC++ Redistributable。
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
@@ -59,7 +59,7 @@ target_link_libraries(gomoku PRIVATE
 gomoku_set_warnings(gomoku)
 
 if(WIN32)
-    # 默认把可双击运行的 五子棋.exe 放在项目根目录；打包或验证时可覆盖此变量，
+    # 默认把可双击运行的 棋魂.exe 放在项目根目录；打包或验证时可覆盖此变量，
     # 避免覆盖用户正在运行的程序。
     set(GOMOKU_GUI_OUTPUT_DIR "${CMAKE_SOURCE_DIR}" CACHE PATH
         "Directory for the Win32 GUI executable")
@@ -83,7 +83,7 @@ if(WIN32)
         endif()
     endif()
     set_target_properties(gomoku_gui PROPERTIES
-        OUTPUT_NAME "五子棋"
+        OUTPUT_NAME "棋魂"
         RUNTIME_OUTPUT_DIRECTORY "${GOMOKU_GUI_OUTPUT_DIR}"
     )
     foreach(config DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)

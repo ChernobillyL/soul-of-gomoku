@@ -26,7 +26,7 @@
 namespace {
 
 constexpr wchar_t kWindowClass[] = L"GomokuNativeWindow";
-constexpr wchar_t kWindowTitle[] = L"五子棋 · Gomoku";
+constexpr wchar_t kWindowTitle[] = L"棋魂";
 constexpr COLORREF kBackground{RGB(17, 24, 39)};
 constexpr COLORREF kPanel{RGB(29, 39, 57)};
 constexpr COLORREF kPanelLight{RGB(38, 51, 72)};

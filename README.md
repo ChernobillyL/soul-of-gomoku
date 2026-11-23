@@ -45,7 +45,7 @@ PvC 中玩家执黑先手，电脑执白后手。经典五子棋 AI 使用六层
 
 ### 直接双击启动
 
-构建完成后，项目根目录会生成 **`五子棋.exe`**。支持五子棋、三人四子棋及六子棋 PvP/PvC。以后可直接双击启动游戏窗口。
+构建完成后，项目根目录会生成 **`棋魂.exe`**。支持五子棋、三人四子棋及六子棋 PvP/PvC。以后可直接双击启动游戏窗口。
 
 首次生成或重新生成程序时，开发者可在项目根目录运行以下构建命令：
 
@@ -54,7 +54,7 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j 8
 ```
 
-生成后双击项目根目录的 `五子棋.exe` 即可游玩。控制台版仍单独保留为 `gomoku.exe`。
+生成后双击项目根目录的 `棋魂.exe` 即可游玩。控制台版仍单独保留为 `gomoku.exe`。
 
 ### 操作方式
 
@@ -110,7 +110,7 @@ ctest --test-dir build --output-on-failure
 
 ### 图形界面输出目录
 
-GUI 默认输出到项目根目录的 `五子棋.exe`。如果该文件正在运行、需要保留旧版本，或只想做构建验证，可以指定其他输出目录：
+GUI 默认输出到项目根目录的 `棋魂.exe`。如果该文件正在运行、需要保留旧版本，或只想做构建验证，可以指定其他输出目录：
 
 ```powershell
 cmake -S . -B build-check -G Ninja -DCMAKE_BUILD_TYPE=Release -DGOMOKU_GUI_OUTPUT_DIR="$PWD/build-check/out"

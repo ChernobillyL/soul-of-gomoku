@@ -17,7 +17,7 @@ build.ninja
 /.idea/
 /.vscode/
 
-# Temporary/debug binaries (the deliverable 五子棋.exe is intentionally tracked)
+# Temporary/debug binaries (the deliverable 棋魂.exe is intentionally tracked)
 /gomoku.exe
 /gomoku_tests.exe
 /gomoku_tests_debug.exe
