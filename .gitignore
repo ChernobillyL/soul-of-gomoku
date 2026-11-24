@@ -17,6 +17,9 @@ build.ninja
 /.idea/
 /.vscode/
 
+# Runtime account and game-record data
+/data/
+
 # Temporary/debug binaries (the deliverable 棋魂.exe is intentionally tracked)
 /gomoku.exe
 /gomoku_tests.exe

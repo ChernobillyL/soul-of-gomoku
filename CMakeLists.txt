@@ -27,6 +27,14 @@ target_include_directories(gomoku_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/incl
 gomoku_set_warnings(gomoku_common)
 
 # ---------------------------------------------------------------------------
+# 账号与数据文件层：用户注册/登录、加盐密码摘要、战绩与对局记录持久化。
+# 与控制台、图形界面共享，便于两个入口使用同一套数据文件格式。
+# ---------------------------------------------------------------------------
+add_library(gomoku_account src/core/account.cpp)
+target_link_libraries(gomoku_account PUBLIC gomoku_common)
+gomoku_set_warnings(gomoku_account)
+
+# ---------------------------------------------------------------------------
 # 三个可独立开发、独立测试的游戏模块。
 # ---------------------------------------------------------------------------
 add_library(gomoku_classic src/classic/game.cpp)
@@ -55,6 +63,7 @@ target_link_libraries(gomoku PRIVATE
     gomoku_classic
     gomoku_three_player
     gomoku_six_player
+    gomoku_account
 )
 gomoku_set_warnings(gomoku)
 
@@ -69,6 +78,7 @@ if(WIN32)
         gomoku_classic
         gomoku_three_player
         gomoku_six_player
+        gomoku_account
         user32
         gdi32
     )
@@ -112,9 +122,15 @@ add_executable(gomoku_six_player_tests tests/six_player/test_six_player.cpp)
 target_link_libraries(gomoku_six_player_tests PRIVATE gomoku_six_player)
 gomoku_set_warnings(gomoku_six_player_tests)
 
+# 账号/文件层使用独立的临时目录测试，不影响真实 data 目录。
+add_executable(gomoku_account_tests tests/core/test_account.cpp)
+target_link_libraries(gomoku_account_tests PRIVATE gomoku_account)
+gomoku_set_warnings(gomoku_account_tests)
+
 include(CTest)
 if(BUILD_TESTING)
     add_test(NAME classic_tests COMMAND gomoku_classic_tests)
     add_test(NAME three_player_tests COMMAND gomoku_three_player_tests)
     add_test(NAME six_player_tests COMMAND gomoku_six_player_tests)
+    add_test(NAME account_tests COMMAND gomoku_account_tests)
 endif()
