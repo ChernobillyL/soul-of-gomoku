@@ -1,15 +1,11 @@
-// 账号与数据文件实现：用户注册/登录、加盐哈希、战绩累计和对局记录持久化。
+// 账号与数据文件实现：用户注册/登录、加盐哈希和战绩累计。
 // 不依赖第三方库；密码摘要使用自行实现的 SHA-256，并通过随机盐与迭代提高
-// 离线暴力破解成本。所有文件采用 UTF-8 文本，字段以 '|' 分隔。
+// 离线暴力破解成本。账号文件采用 UTF-8 文本，字段以 '|' 分隔。
 #include "gomoku/core/account.hpp"
 
-#include <algorithm>
 #include <array>
 #include <charconv>
-#include <chrono>
-#include <cstddef>
 #include <cstdint>
-#include <ctime>
 #include <fstream>
 #include <random>
 #include <system_error>
@@ -171,20 +167,6 @@ std::string randomHex(std::size_t byteCount) {
     return text;
 }
 
-std::string timestampNow() {
-    const auto now = std::chrono::system_clock::now();
-    const std::time_t seconds = std::chrono::system_clock::to_time_t(now);
-    std::tm local{};
-#ifdef _WIN32
-    localtime_s(&local, &seconds);
-#else
-    localtime_r(&seconds, &local);
-#endif
-    char buffer[32]{};
-    std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &local);
-    return buffer;
-}
-
 std::vector<std::string> splitFields(const std::string& line) {
     std::vector<std::string> fields;
     std::size_t start = 0;
@@ -214,29 +196,6 @@ bool parseLongLong(const std::string& text, std::int64_t& value) {
     const char* const end = begin + text.size();
     const auto parsed = std::from_chars(begin, end, value);
     return parsed.ec == std::errc{} && parsed.ptr == end;
-}
-
-// 记录字段不得包含分隔符或换行，否则会破坏按行/按列解析。
-std::string sanitizeField(std::string text) {
-    for (char& ch : text) {
-        if (ch == '|' || ch == '\n' || ch == '\r') ch = ' ';
-    }
-    return text;
-}
-
-const char* outcomeText(Outcome outcome) {
-    switch (outcome) {
-        case Outcome::Win: return "win";
-        case Outcome::Loss: return "loss";
-        case Outcome::Draw: return "draw";
-    }
-    return "draw";
-}
-
-Outcome parseOutcome(const std::string& text) {
-    if (text == "win") return Outcome::Win;
-    if (text == "loss") return Outcome::Loss;
-    return Outcome::Draw;
 }
 
 }  // namespace
@@ -279,14 +238,6 @@ std::string validatePassword(const std::string& password) {
         if (ch < 32u || ch == 127u) return "密码不能包含控制字符";
     }
     return {};
-}
-
-std::string formatMove(Move move) {
-    if (move.row < 0 || move.col < 0 || move.col >= 26) return "?";
-    std::string text;
-    text.push_back(static_cast<char>('A' + move.col));
-    text += std::to_string(move.row + 1);
-    return text;
 }
 
 AccountManager::AccountManager(std::filesystem::path dataDir) : dataDir_(std::move(dataDir)) {}
@@ -358,6 +309,19 @@ LoginStatus AccountManager::login(const std::string& username, const std::string
     return LoginStatus::Ok;
 }
 
+LoginStatus AccountManager::loginOrRegister(const std::string& username,
+                                            const std::string& password) {
+    if (!validateUsername(username).empty() || !validatePassword(password).empty()) {
+        return LoginStatus::InvalidCredentials;
+    }
+    if (findUser(username) == nullptr) {
+        return registerUser(username, password) == RegisterStatus::Ok
+                   ? LoginStatus::Ok
+                   : LoginStatus::StorageError;
+    }
+    return login(username, password);
+}
+
 void AccountManager::logout() {
     currentUsername_.clear();
 }
@@ -368,64 +332,22 @@ std::optional<UserStats> AccountManager::currentStats() const {
     return user->stats;
 }
 
-bool AccountManager::recordGame(const GameRecord& record) {
+bool AccountManager::recordOutcome(Outcome outcome) {
     if (!loggedIn()) return false;
     UserAccount* user = findUser(currentUsername_);
     if (user == nullptr) return false;
 
-    const auto applyOutcome = [user](Outcome outcome, int delta) {
-        switch (outcome) {
-            case Outcome::Win: user->stats.wins += delta; break;
-            case Outcome::Loss: user->stats.losses += delta; break;
-            case Outcome::Draw: user->stats.draws += delta; break;
-        }
+    const auto adjust = [user](Outcome result, int delta) {
+        if (result == Outcome::Win) user->stats.wins += delta;
+        else if (result == Outcome::Loss) user->stats.losses += delta;
+        else user->stats.draws += delta;
     };
-    applyOutcome(record.outcome, 1);
+    adjust(outcome, 1);
     if (!saveUsers()) {
-        applyOutcome(record.outcome, -1);  // 回滚内存统计，保持与文件一致。
+        adjust(outcome, -1);  // 回滚内存统计，保持与文件一致。
         return false;
     }
-
-    std::string moves;
-    for (const MoveRecord& item : record.moves) {
-        if (!moves.empty()) moves.push_back(',');
-        moves += formatMove(item.move);
-    }
-    const std::string line = timestampNow() + "|" + currentUsername_ + "|" +
-                             sanitizeField(record.game) + "|" + sanitizeField(record.mode) +
-                             "|" + outcomeText(record.outcome) + "|" +
-                             sanitizeField(record.detail) + "|" +
-                             std::to_string(record.moves.size()) + "|" + moves;
-    return appendRecordLine(line);
-}
-
-std::vector<RecordEntry> AccountManager::recentRecords(int limit) const {
-    std::vector<RecordEntry> entries;
-    if (!loggedIn()) return entries;
-    std::ifstream input(recordsFile(), std::ios::binary);
-    if (!input) return entries;
-
-    std::string line;
-    while (std::getline(input, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        const std::vector<std::string> fields = splitFields(line);
-        if (fields.size() < 7u || fields[1] != currentUsername_) continue;
-        RecordEntry entry;
-        entry.timestamp = fields[0];
-        entry.username = fields[1];
-        entry.game = fields[2];
-        entry.mode = fields[3];
-        entry.outcome = parseOutcome(fields[4]);
-        entry.detail = fields[5];
-        if (!parseInt(fields[6], entry.moveCount)) entry.moveCount = 0;
-        entries.push_back(std::move(entry));
-    }
-    if (limit > 0 && entries.size() > static_cast<std::size_t>(limit)) {
-        entries.erase(entries.begin(),
-                      entries.end() - static_cast<std::ptrdiff_t>(limit));
-    }
-    std::reverse(entries.begin(), entries.end());
-    return entries;
+    return true;
 }
 
 const UserAccount* AccountManager::findUser(const std::string& username) const {
@@ -478,17 +400,6 @@ bool AccountManager::saveUsers() {
     }
     storageReady_ = true;
     return true;
-}
-
-bool AccountManager::appendRecordLine(const std::string& line) const {
-    std::error_code error;
-    std::filesystem::create_directories(dataDir_, error);
-    if (error) return false;
-    std::ofstream output(recordsFile(), std::ios::binary | std::ios::app);
-    if (!output) return false;
-    output << line << '\n';
-    output.flush();
-    return static_cast<bool>(output);
 }
 
 }  // namespace gomoku

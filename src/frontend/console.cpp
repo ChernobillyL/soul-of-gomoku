@@ -12,7 +12,6 @@
 #include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #ifdef _WIN32
 #include <conio.h>
@@ -253,31 +252,10 @@ void announceThreePlayerAiResult(const ThreePlayerGame& game) {
     }
 }
 
-const char* outcomeLabel(gomoku::Outcome outcome) {
-    switch (outcome) {
-        case gomoku::Outcome::Win: return "胜";
-        case gomoku::Outcome::Loss: return "负";
-        case gomoku::Outcome::Draw: return "平";
-    }
-    return "平";
-}
-
-// 参数：account 为账号管理器，game/mode/outcome/detail 描述本局结果。
-// 实现：仅在登录状态下写入 data/records.txt 并累计战绩；游客静默跳过。
-void recordOutcome(gomoku::AccountManager& account, const char* game, bool pvc,
-                   gomoku::Outcome outcome, const char* detail,
-                   const std::vector<gomoku::MoveRecord>& moves) {
-    if (!account.loggedIn()) return;
-    gomoku::GameRecord record;
-    record.game = game;
-    record.mode = pvc ? "PvC" : "PvP";
-    record.outcome = outcome;
-    record.detail = detail;
-    record.moves = moves;
-    if (account.recordGame(record)) {
-        std::cout << "对局记录已保存到 data/records.txt。\n";
-    } else {
-        std::cout << "警告：对局记录写入失败，请检查 data 目录权限。\n";
+// 登录状态下累计一局战绩；游客静默跳过。
+void saveResult(gomoku::AccountManager& account, gomoku::Outcome outcome) {
+    if (account.loggedIn() && !account.recordOutcome(outcome)) {
+        std::cout << "警告：战绩写入失败，请检查 data 目录权限。\n";
     }
 }
 
@@ -313,15 +291,9 @@ bool playGame(bool pvc, gomoku::AccountManager& account) {
     const Result result = game.result();
     announceResult(result, pvc);
     gomoku::Outcome outcome = gomoku::Outcome::Draw;
-    const char* detail = "平局";
-    if (result == Result::BlackWins) {
-        outcome = gomoku::Outcome::Win;
-        detail = "黑棋获胜";
-    } else if (result == Result::WhiteWins) {
-        outcome = gomoku::Outcome::Loss;
-        detail = "白棋获胜";
-    }
-    recordOutcome(account, "五子棋", pvc, outcome, detail, game.moveHistory());
+    if (result == Result::BlackWins) outcome = gomoku::Outcome::Win;
+    else if (result == Result::WhiteWins) outcome = gomoku::Outcome::Loss;
+    saveResult(account, outcome);
     return true;
 }
 
@@ -356,20 +328,13 @@ bool playSixPlayerGame(bool pvc, gomoku::AccountManager& account) {
 
     const auto winner = game.winner();
     gomoku::Outcome outcome = gomoku::Outcome::Draw;
-    const char* detail = "平局";
     if (winner) {
         std::cout << sixPlayerName(*winner, pvc) << "获胜！\n";
-        if (*winner == Stone::Black) {
-            outcome = gomoku::Outcome::Win;
-            detail = "黑方获胜";
-        } else {
-            outcome = gomoku::Outcome::Loss;
-            detail = "白方获胜";
-        }
+        outcome = *winner == Stone::Black ? gomoku::Outcome::Win : gomoku::Outcome::Loss;
     } else {
         std::cout << "棋盘下满，平局！\n";
     }
-    recordOutcome(account, "六子棋", pvc, outcome, detail, game.moveHistory());
+    saveResult(account, outcome);
     return true;
 }
 
@@ -411,18 +376,9 @@ bool playThreePlayerGame(gomoku::AccountManager& account) {
     announceThreePlayerResult(game);
     const auto winner = game.winner();
     gomoku::Outcome outcome = gomoku::Outcome::Draw;
-    const char* detail = "平局";
-    if (winner == Stone::Black) {
-        outcome = gomoku::Outcome::Win;
-        detail = "黑棋获胜";
-    } else if (winner == Stone::White) {
-        outcome = gomoku::Outcome::Loss;
-        detail = "白棋获胜";
-    } else if (winner == Stone::Red) {
-        outcome = gomoku::Outcome::Loss;
-        detail = "红棋获胜";
-    }
-    recordOutcome(account, "三人四子棋", false, outcome, detail, game.moveHistory());
+    if (winner == Stone::Black) outcome = gomoku::Outcome::Win;
+    else if (winner) outcome = gomoku::Outcome::Loss;
+    saveResult(account, outcome);
     return true;
 }
 
@@ -459,18 +415,9 @@ bool playThreePlayerAiGame(gomoku::AccountManager& account) {
     announceThreePlayerAiResult(game);
     const auto winner = game.winner();
     gomoku::Outcome outcome = gomoku::Outcome::Draw;
-    const char* detail = "平局";
-    if (winner == Stone::Black) {
-        outcome = gomoku::Outcome::Win;
-        detail = "黑棋获胜";
-    } else if (winner == Stone::White) {
-        outcome = gomoku::Outcome::Loss;
-        detail = "白棋获胜";
-    } else if (winner == Stone::Red) {
-        outcome = gomoku::Outcome::Loss;
-        detail = "红棋获胜";
-    }
-    recordOutcome(account, "三人四子棋", true, outcome, detail, game.moveHistory());
+    if (winner == Stone::Black) outcome = gomoku::Outcome::Win;
+    else if (winner) outcome = gomoku::Outcome::Loss;
+    saveResult(account, outcome);
     return true;
 }
 
@@ -582,25 +529,6 @@ bool loginFlow(gomoku::AccountManager& account) {
     }
 }
 
-void showRecords(const gomoku::AccountManager& account) {
-    if (!account.loggedIn()) {
-        std::cout << "游客模式不保存对局记录。\n";
-        return;
-    }
-    std::cout << "\n===== " << account.currentUsername() << " 的最近对局 =====\n";
-    const std::vector<gomoku::RecordEntry> entries = account.recentRecords(10);
-    if (entries.empty()) {
-        std::cout << "暂无记录，完成一局后会自动保存。\n";
-        return;
-    }
-    for (const gomoku::RecordEntry& entry : entries) {
-        std::cout << entry.timestamp << "  " << entry.game << ' ' << entry.mode << "  "
-                  << outcomeLabel(entry.outcome) << "  " << entry.detail << "  "
-                  << entry.moveCount << " 手\n";
-    }
-    std::cout << "（数据文件：" << (account.dataDir() / "records.txt").string() << "）\n";
-}
-
 // 参数：account 为已登录或游客会话。
 // 返回：false 表示退出程序；true 表示退出登录并回到登录界面。
 bool runMainMenu(gomoku::AccountManager& account) {
@@ -622,19 +550,14 @@ bool runMainMenu(gomoku::AccountManager& account) {
                   << "4：三人四子棋 PvC（1 人 + 2 电脑）\n"
                   << "5：六子棋 PvP\n"
                   << "6：六子棋 PvC（玩家执黑先手）\n"
-                  << "7：我的对局记录\n"
-                  << "8：退出登录（切换账号）\n"
-                  << "9：退出游戏\n";
-        const int choice = readMenuChoice("请选择（按 Esc 退出）：", 1, 9);
-        if (choice == 0 || choice == 9) return false;
-        if (choice == 8) {
+                  << "7：退出登录（切换账号）\n"
+                  << "8：退出游戏\n";
+        const int choice = readMenuChoice("请选择（按 Esc 退出）：", 1, 8);
+        if (choice == 0 || choice == 8) return false;
+        if (choice == 7) {
             account.logout();
             std::cout << "已退出登录。\n";
             return true;
-        }
-        if (choice == 7) {
-            showRecords(account);
-            continue;
         }
         if (choice == 3) {
             if (!runThreePlayerMode(account)) return false;
@@ -655,7 +578,7 @@ bool runMainMenu(gomoku::AccountManager& account) {
 }  // namespace
 
 // 程序入口：先进入登录/注册界面，登录后在主菜单选择棋种与模式。
-// 对局结束后自动把结果写入 data/records.txt 并累计当前用户战绩。
+// 对局结束后累计当前用户战绩。
 int main() {
 #ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);

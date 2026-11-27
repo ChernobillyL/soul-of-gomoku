@@ -17,7 +17,7 @@ build.ninja
 /.idea/
 /.vscode/
 
-# Runtime account and game-record data
+# Runtime account data
 /data/
 
 # Temporary/debug binaries (the deliverable 棋魂.exe is intentionally tracked)

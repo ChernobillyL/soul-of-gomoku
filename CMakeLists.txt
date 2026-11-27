@@ -27,7 +27,7 @@ target_include_directories(gomoku_common PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/incl
 gomoku_set_warnings(gomoku_common)
 
 # ---------------------------------------------------------------------------
-# 账号与数据文件层：用户注册/登录、加盐密码摘要、战绩与对局记录持久化。
+# 账号与数据文件层：用户注册/登录、加盐密码摘要与战绩持久化。
 # 与控制台、图形界面共享，便于两个入口使用同一套数据文件格式。
 # ---------------------------------------------------------------------------
 add_library(gomoku_account src/core/account.cpp)

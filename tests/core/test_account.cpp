@@ -1,5 +1,5 @@
 // 账号与数据文件层测试：校验规则、注册/登录、加盐摘要、战绩累计、
-// 对局记录读写、多用户隔离，以及重新加载后的持久化。
+// 多用户隔离，以及重新加载后的持久化。
 #include "gomoku/core/account.hpp"
 
 #include <chrono>
@@ -34,19 +34,6 @@ std::filesystem::path makeRootDirectory() {
            ("gomoku_account_test_" + std::to_string(stamp));
 }
 
-gomoku::GameRecord makeRecord(gomoku::Outcome outcome) {
-    gomoku::GameRecord record;
-    record.game = "五子棋";
-    record.mode = "PvC";
-    record.outcome = outcome;
-    record.detail = outcome == gomoku::Outcome::Win    ? "黑棋获胜"
-                    : outcome == gomoku::Outcome::Loss ? "白棋获胜"
-                                                       : "平局";
-    record.moves.push_back({{7, 7}, gomoku::Stone::Black});
-    record.moves.push_back({{7, 8}, gomoku::Stone::White});
-    return record;
-}
-
 void testPasswordDigest() {
     const std::string digest =
         gomoku::passwordDigest("00112233445566778899aabbccddeeff", "secret");
@@ -69,7 +56,6 @@ void testValidation() {
     check(!gomoku::validatePassword("123").empty(), "拒绝过短密码");
     check(!gomoku::validatePassword(std::string(65, 'a')).empty(), "拒绝过长密码");
     check(gomoku::validatePassword("1234").empty(), "接受四字符密码");
-    check(gomoku::formatMove({7, 7}) == "H8", "坐标格式化为 H8");
 }
 
 void testRegisterAndLogin(const std::filesystem::path& root) {
@@ -114,6 +100,19 @@ void testRegisterAndLogin(const std::filesystem::path& root) {
     check(account.currentUsername() == "alice", "登录后当前用户正确");
 }
 
+void testLoginOrRegister(const std::filesystem::path& root) {
+    gomoku::AccountManager account(root / "auto");
+    check(account.load(), "自动注册：创建目录");
+    check(account.loginOrRegister("erin", "pass1234") == gomoku::LoginStatus::Ok,
+          "新用户名自动注册并登录");
+    check(account.users().size() == 1, "自动注册创建一条账号");
+    account.logout();
+    check(account.loginOrRegister("erin", "wrong") == gomoku::LoginStatus::InvalidCredentials,
+          "已有账号密码错误时拒绝");
+    check(account.loginOrRegister("erin", "pass1234") == gomoku::LoginStatus::Ok,
+          "已有账号密码正确时登录");
+}
+
 void testChineseUsername(const std::filesystem::path& root) {
     const std::filesystem::path directory = root / "chinese";
     gomoku::AccountManager account(directory);
@@ -126,17 +125,17 @@ void testChineseUsername(const std::filesystem::path& root) {
           "users.txt 使用 UTF-8 保存中文用户名");
 }
 
-void testStatsAndRecords(const std::filesystem::path& root) {
-    const std::filesystem::path directory = root / "records";
+void testStats(const std::filesystem::path& root) {
+    const std::filesystem::path directory = root / "stats";
     gomoku::AccountManager account(directory);
-    check(account.load(), "对局记录：创建目录");
+    check(account.load(), "战绩：创建目录");
     check(account.registerUser("dave", "pass1234") == gomoku::RegisterStatus::Ok,
-          "对局记录：注册用户");
+          "战绩：注册用户");
 
-    check(account.recordGame(makeRecord(gomoku::Outcome::Win)), "保存胜局");
-    check(account.recordGame(makeRecord(gomoku::Outcome::Win)), "保存第二场胜局");
-    check(account.recordGame(makeRecord(gomoku::Outcome::Loss)), "保存负局");
-    check(account.recordGame(makeRecord(gomoku::Outcome::Draw)), "保存平局");
+    check(account.recordOutcome(gomoku::Outcome::Win), "保存胜局");
+    check(account.recordOutcome(gomoku::Outcome::Win), "保存第二场胜局");
+    check(account.recordOutcome(gomoku::Outcome::Loss), "保存负局");
+    check(account.recordOutcome(gomoku::Outcome::Draw), "保存平局");
 
     const auto stats = account.currentStats();
     check(stats.has_value(), "登录用户有战绩");
@@ -146,21 +145,8 @@ void testStatsAndRecords(const std::filesystem::path& root) {
         check(stats->draws == 1, "平局累计为 1");
         check(stats->games() == 4, "总局数为 4");
     }
-
-    const std::string recordsText = readTextFile(directory / "records.txt");
-    check(recordsText.find("dave") != std::string::npos, "records.txt 写入用户名");
-    check(recordsText.find("H8") != std::string::npos, "records.txt 写入棋谱坐标");
-    check(recordsText.find("win") != std::string::npos, "records.txt 写入结果");
-
-    const auto entries = account.recentRecords(10);
-    check(entries.size() == 4, "读取到四条记录");
-    check(account.recentRecords(2).size() == 2, "限制返回条数");
-    if (!entries.empty()) {
-        check(entries.front().outcome == gomoku::Outcome::Draw, "最近一条记录在前");
-        check(entries.front().moveCount == 2, "记录手数正确");
-        check(entries.front().game == "五子棋", "记录棋种正确");
-        check(entries.front().mode == "PvC", "记录模式正确");
-    }
+    check(readTextFile(directory / "users.txt").find("dave") != std::string::npos,
+          "users.txt 保存账号与战绩");
 }
 
 void testPersistence(const std::filesystem::path& root) {
@@ -170,7 +156,7 @@ void testPersistence(const std::filesystem::path& root) {
         check(first.load(), "持久化：创建目录");
         check(first.registerUser("carol", "pw1234") == gomoku::RegisterStatus::Ok,
               "持久化：注册");
-        check(first.recordGame(makeRecord(gomoku::Outcome::Win)), "持久化：保存对局");
+        check(first.recordOutcome(gomoku::Outcome::Win), "持久化：保存战绩");
     }
 
     gomoku::AccountManager second(directory);
@@ -179,7 +165,6 @@ void testPersistence(const std::filesystem::path& root) {
     check(second.login("carol", "pw1234") == gomoku::LoginStatus::Ok, "重新登录成功");
     const auto stats = second.currentStats();
     check(stats.has_value() && stats->wins == 1, "重新加载后战绩保留");
-    check(second.recentRecords().size() == 1, "重新加载后对局记录保留");
 }
 
 void testMultipleUsers(const std::filesystem::path& root) {
@@ -188,23 +173,20 @@ void testMultipleUsers(const std::filesystem::path& root) {
     check(account.load(), "多用户：创建目录");
 
     check(account.registerUser("eve", "evepass") == gomoku::RegisterStatus::Ok, "注册 eve");
-    check(account.recordGame(makeRecord(gomoku::Outcome::Win)), "eve 保存一胜");
+    check(account.recordOutcome(gomoku::Outcome::Win), "eve 保存一胜");
     account.logout();
 
     check(account.registerUser("frank", "frankpass") == gomoku::RegisterStatus::Ok,
           "注册 frank");
-    check(account.recordGame(makeRecord(gomoku::Outcome::Loss)), "frank 保存一负");
-    check(account.recentRecords().size() == 1, "frank 只看到自己的记录");
+    check(account.recordOutcome(gomoku::Outcome::Loss), "frank 保存一负");
     account.logout();
 
     check(account.login("eve", "evepass") == gomoku::LoginStatus::Ok, "eve 重新登录");
     const auto stats = account.currentStats();
     check(stats.has_value() && stats->wins == 1 && stats->losses == 0,
           "eve 战绩与 frank 隔离");
-    check(account.recentRecords().size() == 1, "eve 只看到自己的记录");
     account.logout();
-    check(account.recentRecords().empty(), "未登录时没有可读记录");
-    check(!account.recordGame(makeRecord(gomoku::Outcome::Win)), "游客状态不写记录");
+    check(!account.recordOutcome(gomoku::Outcome::Win), "游客状态不写战绩");
 }
 
 }  // namespace
@@ -221,8 +203,9 @@ int main() {
     testPasswordDigest();
     testValidation();
     testRegisterAndLogin(root);
+    testLoginOrRegister(root);
     testChineseUsername(root);
-    testStatsAndRecords(root);
+    testStats(root);
     testPersistence(root);
     testMultipleUsers(root);
 
